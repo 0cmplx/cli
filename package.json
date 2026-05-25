@@ -1,0 +1,15 @@
+{
+  "name": "@0cmplx/cli",
+  "version": "0.1.0",
+  "description": "0cmplx command-line interface",
+  "type": "module",
+  "bin": { "0cmplx": "dist/bin.js" },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run"
+  },
+  "files": ["dist"],
+  "license": "MIT",
+  "engines": { "node": ">=22" }
+}
