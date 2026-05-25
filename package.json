@@ -11,5 +11,9 @@
   },
   "files": ["dist"],
   "license": "MIT",
-  "engines": { "node": ">=22" }
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "^22.15.18"
+  }
 }
