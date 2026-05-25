@@ -9,6 +9,13 @@ interface VerifyResponse {
   scopes: string[];
 }
 
+export async function logoutOnServer(token: string): Promise<void> {
+  await fetch(`${API_URL}/api/auth/logout`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function verifyToken(token: string): Promise<VerifyResponse> {
   const res = await fetch(`${API_URL}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
