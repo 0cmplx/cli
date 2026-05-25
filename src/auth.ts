@@ -15,9 +15,32 @@ export async function authLogin(): Promise<void> {
   console.log('  Generate one at: Settings > Programmatic Access');
   console.log('');
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const token = (await rl.question('  Token: ')).trim();
-  rl.close();
+  // Hide token input (like password prompts)
+  process.stdout.write('  Token: ');
+  const token = await new Promise<string>((resolve) => {
+    let buf = '';
+    const stdin = process.stdin;
+    const wasRaw = stdin.isRaw;
+    if (stdin.isTTY) stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf-8');
+    const onData = (ch: string) => {
+      if (ch === '\n' || ch === '\r') {
+        stdin.removeListener('data', onData);
+        if (stdin.isTTY) stdin.setRawMode(wasRaw ?? false);
+        stdin.pause();
+        process.stdout.write('\n');
+        resolve(buf.trim());
+      } else if (ch === '\u0003') {
+        process.exit(1);
+      } else if (ch === '\u007f' || ch === '\b') {
+        buf = buf.slice(0, -1);
+      } else {
+        buf += ch;
+      }
+    };
+    stdin.on('data', onData);
+  });
 
   if (!token) {
     console.error('No token provided.');
@@ -67,11 +90,19 @@ export function authStatus(): void {
   console.log('');
 }
 
-export function authLogout(): void {
-  const removed = clearCredentials();
-  if (removed) {
-    console.log('Credentials cleared.');
-  } else {
+export async function authLogout(): Promise<void> {
+  const creds = loadCredentials();
+  if (!creds) {
     console.log('No credentials found.');
+    return;
   }
+
+  // Notify server
+  try {
+    const { logoutOnServer } = await import('./client.js');
+    await logoutOnServer(creds.token);
+  } catch { /* best effort */ }
+
+  clearCredentials();
+  console.log('Credentials cleared.');
 }
