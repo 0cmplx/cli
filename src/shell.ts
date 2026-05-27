@@ -1,18 +1,12 @@
 import { createInterface, type Interface } from 'readline';
-import { loadCredentials } from './credentials.js';
-import { authLogin, authStatus, authLogout } from './auth.js';
+import { loadCredentials } from './infrastructure/credentials.js';
+import { resolveContext } from './infrastructure/context.js';
+import { parseArgs, findCommand, getCommands } from './router.js';
+import {
+  R, DIM, BOLD, W, GREY, GREEN, CYAN, RED, D,
+} from './presentation/ui/ansi.js';
+import { shortId } from './presentation/ui/format.js';
 
-const R = '\x1b[0m';
-const DIM = '\x1b[2m';
-const BOLD = '\x1b[1m';
-const W = '\x1b[97m';
-const GREY = '\x1b[90m';
-const GREEN = '\x1b[32m';
-const CYAN = '\x1b[36m';
-const RED = '\x1b[31m';
-const D = '\x1b[38;5;240m';
-
-// Capsule logo: top half light, bottom half dark, hole in center
 const LOGO = [
   '',
   `   ${W}${BOLD} ██████${R}${DIM}  ██████ ███    ███ ██████  ${R}`,
@@ -23,47 +17,55 @@ const LOGO = [
   '',
 ];
 
+function getPrompt(): string {
+  const ctx = resolveContext({});
+  const label = ctx.app ? ` ${shortId(ctx.app)}` : '';
+  return `  ${CYAN}0cx${label}${R} ${GREY}\u203a${R} `;
+}
+
 function printWelcome(): void {
   console.clear();
   LOGO.forEach((line) => console.log(line));
 
   const creds = loadCredentials();
   if (creds) {
-    console.log(`  ${GREEN}●${R} ${W}${creds.login}${R} ${DIM}${creds.tier}${R}`);
+    console.log(`  ${GREEN}\u25cf${R} ${W}${creds.login}${R} ${DIM}${creds.tier}${R}`);
   } else {
-    console.log(`  ${DIM}●${R} ${DIM}not authenticated  ${GREY}type ${W}auth${GREY} to connect${R}`);
+    console.log(`  ${DIM}\u25cf${R} ${DIM}not authenticated  ${GREY}type ${W}auth${GREY} to connect${R}`);
   }
   console.log('');
 }
 
-function printHelp(): void {
+function printHelp(commands: { name: string; description: string }[]): void {
   console.log('');
-  console.log(`  ${W}${BOLD}auth${R}              ${DIM}Authenticate with an API token${R}`);
-  console.log(`  ${W}${BOLD}auth status${R}       ${DIM}Show current authentication${R}`);
-  console.log(`  ${W}${BOLD}auth logout${R}       ${DIM}Clear stored credentials${R}`);
-  console.log(`  ${W}${BOLD}whoami${R}            ${DIM}Show current user${R}`);
-  console.log(`  ${W}${BOLD}clear${R}             ${DIM}Clear the screen${R}`);
-  console.log(`  ${W}${BOLD}exit${R}              ${DIM}Exit${R}`);
+  console.log(`  ${W}${BOLD}Shell commands${R}`);
+  console.log(`    ${W}exit${R}    ${DIM}Exit the shell${R}`);
+  console.log(`    ${W}clear${R}   ${DIM}Clear the screen${R}`);
+  console.log(`    ${W}whoami${R}  ${DIM}Show current user${R}`);
+  console.log(`    ${W}help${R}    ${DIM}Show this help${R}`);
+  console.log('');
+  console.log(`  ${W}${BOLD}Commands${R}`);
+  const maxLen = Math.max(...commands.map((c) => c.name.length));
+  for (const cmd of commands) {
+    const padded = cmd.name.padEnd(maxLen + 2);
+    console.log(`    ${W}${padded}${R}${DIM}${cmd.description}${R}`);
+  }
   console.log('');
 }
 
-async function handleCommand(input: string, rl: Interface): Promise<boolean> {
-  const parts = input.trim().split(/\s+/);
-  const cmd = parts[0];
-  const sub = parts[1];
+async function handleCommand(
+  input: string,
+  rl: Interface,
+): Promise<boolean> {
+  const trimmed = input.trim();
+  if (!trimmed) return true;
 
-  if (!cmd) return true;
-
-  switch (cmd) {
+  // Built-in shell commands
+  switch (trimmed) {
     case 'exit':
     case 'quit':
     case 'q':
       return false;
-
-    case 'help':
-    case '?':
-      printHelp();
-      return true;
 
     case 'clear':
       printWelcome();
@@ -72,45 +74,51 @@ async function handleCommand(input: string, rl: Interface): Promise<boolean> {
     case 'whoami': {
       const creds = loadCredentials();
       if (!creds) {
-        console.log(`\n  ${DIM}●${R} ${DIM}not authenticated${R}\n`);
+        console.log(`\n  ${DIM}\u25cf${R} ${DIM}not authenticated${R}\n`);
       } else {
-        console.log(`\n  ${GREEN}●${R} ${W}${creds.login}${R} ${DIM}${creds.tier}  ${creds.scopes.length} scopes${R}\n`);
+        console.log(`\n  ${GREEN}\u25cf${R} ${W}${creds.login}${R} ${DIM}${creds.tier}  ${creds.scopes.length} scopes${R}\n`);
       }
       return true;
     }
 
-    case 'auth':
-      rl.pause();
-      try {
-        if (!sub || sub === 'login') {
-          await authLogin();
-        } else if (sub === 'status') {
-          authStatus();
-        } else if (sub === 'logout') {
-          await authLogout();
-        } else {
-          console.log(`  ${RED}Unknown: auth ${sub}${R}`);
-        }
-      } finally {
-        rl.resume();
-      }
+    case 'help':
+    case '?': {
+      const commands = await getCommands();
+      printHelp(commands);
       return true;
-
-    default:
-      console.log(`  ${RED}unknown:${R} ${DIM}${cmd}${R}`);
-      return true;
+    }
   }
+
+  // Delegate to command router
+  const parts = trimmed.split(/\s+/);
+  const { positionals, flags } = parseArgs(parts);
+  const commands = await getCommands();
+  const { command, args } = findCommand(commands, positionals);
+
+  if (!command) {
+    console.log(`  ${RED}unknown:${R} ${DIM}${parts[0]}${R}`);
+    return true;
+  }
+
+  rl.pause();
+  try {
+    await command.run(args, flags);
+  } catch (err) {
+    console.error(`  ${RED}${err instanceof Error ? err.message : 'Command failed'}${R}`);
+  } finally {
+    rl.resume();
+  }
+
+  return true;
 }
 
 export async function startShell(): Promise<void> {
   printWelcome();
 
-  const prompt = `  ${CYAN}0cx${R} ${GREY}\u203a${R} `;
-
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt,
+    prompt: getPrompt(),
     terminal: true,
   });
 
@@ -123,6 +131,8 @@ export async function startShell(): Promise<void> {
       rl.close();
       return;
     }
+    // Refresh prompt (context may have changed)
+    rl.setPrompt(getPrompt());
     rl.on('line', onLine);
     rl.prompt();
   };
