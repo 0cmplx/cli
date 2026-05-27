@@ -12,22 +12,25 @@ export async function list(opts?: { search?: string; category?: string }): Promi
 
 export async function get(id: string): Promise<Server> {
   validateId(id, 'server ID');
-  return request<Server>(`/api/servers/${encodeURIComponent(id)}`);
+  const res = await request<{ server: Server }>(`/api/servers/${encodeURIComponent(id)}`);
+  return res.server;
 }
 
 export async function install(appId: string, serverId: string): Promise<App> {
   validateId(appId, 'app ID');
   validateId(serverId, 'server ID');
-  return request<App>(`/api/apps/${encodeURIComponent(appId)}/servers`, {
+  const res = await request<{ app: App }>(`/api/apps/${encodeURIComponent(appId)}/servers`, {
     method: 'POST',
     body: { serverId },
   });
+  return res.app;
 }
 
 export async function uninstall(appId: string, serverId: string): Promise<App> {
   validateId(appId, 'app ID');
   validateId(serverId, 'server ID');
-  return request<App>(`/api/apps/${encodeURIComponent(appId)}/servers/${encodeURIComponent(serverId)}`, {
+  const res = await request<{ app: App }>(`/api/apps/${encodeURIComponent(appId)}/servers/${encodeURIComponent(serverId)}`, {
     method: 'DELETE',
   });
+  return res.app;
 }

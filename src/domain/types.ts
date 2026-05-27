@@ -22,32 +22,46 @@ export interface Credentials {
 // ── Schema ─────────────────────────────────────────────────────────
 
 export interface SchemaCoverage {
-  found: number;
-  failed: number;
+  tablesFound: number;
+  tablesFailed: number;
+  columnsFound: number;
+  relationshipsFound: number;
+  skipped: string[];
 }
 
-export interface SchemaColumn {
-  table: string;
+export interface SchemaForeignKey {
+  column: string;
+  referencesTable: string;
+  referencesColumn: string;
+}
+
+export interface SchemaColumnDef {
   name: string;
   type: string;
   nullable: boolean;
+  primaryKey: boolean;
+  unique: boolean;
+  defaultValue: string | null;
 }
 
-export interface SchemaRelationship {
-  from: string;
-  to: string;
-  type: string;
+export interface SchemaTable {
+  name: string;
+  columns: SchemaColumnDef[];
+  foreignKeys: SchemaForeignKey[];
 }
 
 export interface SchemaGraphNode {
   id: string;
   label: string;
+  type: string;
+  table?: string;
 }
 
 export interface SchemaGraphEdge {
-  from: string;
-  to: string;
+  source: string;
+  target: string;
   label: string;
+  type: string;
 }
 
 export interface SchemaGraph {
@@ -58,27 +72,35 @@ export interface SchemaGraph {
 export interface Schema {
   id: string;
   name: string;
-  tables: number;
+  tables: SchemaTable[];
   coverage: SchemaCoverage;
+  createdAt: string;
 }
 
 export interface SchemaDetail extends Schema {
-  columns: SchemaColumn[];
-  relationships: SchemaRelationship[];
+  graph: SchemaGraph;
+}
+
+export interface SchemaListItem {
+  id: string;
+  name: string;
+  tableCount: number;
+  coverage: SchemaCoverage;
+  createdAt: string;
 }
 
 export interface SchemaListResponse {
-  schemas: Schema[];
+  schemas: SchemaListItem[];
 }
 
 // ── App ────────────────────────────────────────────────────────────
 
 export interface App {
   id: string;
-  name?: string;
-  schemaId?: string;
-  servers: string[];
+  userId: string | null;
+  installedServerIds: string[];
   createdAt: string;
+  expiresAt: string;
 }
 
 // ── Server ─────────────────────────────────────────────────────────

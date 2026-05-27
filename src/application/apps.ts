@@ -3,13 +3,15 @@ import { validateId } from '../domain/validation.js';
 import type { App } from '../domain/types.js';
 
 export async function create(serverIds?: string[]): Promise<App> {
-  return request<App>('/api/apps', {
+  const res = await request<{ app: App }>('/api/apps', {
     method: 'POST',
     body: { serverIds },
   });
+  return res.app;
 }
 
 export async function get(id: string): Promise<App> {
   validateId(id, 'app ID');
-  return request<App>(`/api/apps/${encodeURIComponent(id)}`);
+  const res = await request<{ app: App }>(`/api/apps/${encodeURIComponent(id)}`);
+  return res.app;
 }

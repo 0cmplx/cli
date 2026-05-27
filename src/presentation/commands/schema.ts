@@ -31,20 +31,28 @@ async function upload(
     action: () => SchemaService.upload(name, sql),
     onSuccess: (result) => {
       console.log('');
+      console.log(`  ${W}${result.name}${R}  ${DIM}${result.id}${R}`);
+      console.log(`  ${DIM}Coverage${R}  ${coverageBar(result.coverage.tablesFound, result.coverage.tablesFailed)}`);
+      console.log('');
+
       printTable(
         [
-          { key: 'id', label: 'ID' },
-          { key: 'name', label: 'Name' },
-          { key: 'tables', label: 'Tables', align: 'right' },
-          { key: 'coverage', label: 'Coverage' },
+          { key: 'table', label: 'Table' },
+          { key: 'columns', label: 'Columns', align: 'right' as const },
+          { key: 'relations', label: 'Relations', align: 'right' as const },
         ],
-        [{
-          id: shortId(result.id),
-          name: result.name,
-          tables: result.tables,
-          coverage: coverageBar(result.coverage.found, result.coverage.failed),
-        }],
+        result.tables.map((t) => ({
+          table: t.name,
+          columns: t.columns.length,
+          relations: t.foreignKeys.length || '-',
+        })),
       );
+
+      if (result.coverage.skipped.length > 0) {
+        console.log('');
+        console.log(`  ${DIM}Skipped: ${result.coverage.skipped.join(', ')}${R}`);
+      }
+
       console.log('');
       console.log(`  ${DIM}Next: ${CLI_BIN} schema show ${shortId(result.id)}${R}`);
       console.log(`  ${DIM}      ${CLI_BIN} schema graph ${shortId(result.id)}${R}`);
@@ -67,14 +75,14 @@ async function list(
         [
           { key: 'id', label: 'ID' },
           { key: 'name', label: 'Name' },
-          { key: 'tables', label: 'Tables', align: 'right' },
+          { key: 'tables', label: 'Tables', align: 'right' as const },
           { key: 'coverage', label: 'Coverage' },
         ],
         result.schemas.map((s) => ({
           id: shortId(s.id),
           name: s.name,
-          tables: s.tables,
-          coverage: coverageBar(s.coverage.found, s.coverage.failed),
+          tables: s.tableCount,
+          coverage: coverageBar(s.coverage.tablesFound, s.coverage.tablesFailed),
         })),
       );
       console.log('');
@@ -93,29 +101,27 @@ async function show(
     spinner: 'Fetching schema',
     action: () => SchemaService.get(id),
     onSuccess: (result) => {
-      heading('Tables');
+      console.log('');
+      console.log(`  ${W}${result.name}${R}  ${DIM}${result.id}${R}`);
+      console.log(`  ${DIM}Coverage${R}  ${coverageBar(result.coverage.tablesFound, result.coverage.tablesFailed)}`);
+      console.log('');
 
-      // Group columns by table
-      const tables = new Map<string, typeof result.columns>();
-      for (const col of result.columns) {
-        const existing = tables.get(col.table) ?? [];
-        existing.push(col);
-        tables.set(col.table, existing);
-      }
-
-      for (const [table, cols] of tables) {
-        console.log(`  ${W}${table}${R}`);
-        for (const col of cols) {
+      for (const table of result.tables) {
+        console.log(`  ${W}${table.name}${R}`);
+        for (const col of table.columns) {
           const nullable = col.nullable ? `${DIM}nullable${R}` : '';
           console.log(`    ${GREY}${col.name}${R}  ${DIM}${col.type}${R}  ${nullable}`);
         }
         console.log('');
       }
 
-      if (result.relationships.length > 0) {
+      const fks = result.tables.flatMap((t) =>
+        t.foreignKeys.map((fk) => ({ from: `${t.name}.${fk.column}`, to: `${fk.referencesTable}.${fk.referencesColumn}` }))
+      );
+      if (fks.length > 0) {
         heading('Relationships');
-        for (const rel of result.relationships) {
-          console.log(`  ${rel.from} ${CYAN}${ARROW}${R} ${rel.to}  ${DIM}${rel.type}${R}`);
+        for (const fk of fks) {
+          console.log(`  ${fk.from} ${CYAN}${ARROW}${R} ${fk.to}`);
         }
         console.log('');
       }
@@ -135,18 +141,17 @@ async function graph(
     action: () => SchemaService.getGraph(id),
     onSuccess: (result) => {
       console.log('');
-      for (const edge of result.edges) {
-        const from = result.nodes.find((n) => n.id === edge.from)?.label ?? edge.from;
-        const to = result.nodes.find((n) => n.id === edge.to)?.label ?? edge.to;
-        console.log(`  ${W}${from}${R} ${CYAN}--${edge.label}-->${R} ${W}${to}${R}`);
+      const refs = result.edges.filter((e) => e.type === 'references');
+      for (const ref of refs) {
+        console.log(`  ${W}${ref.source}${R} ${CYAN}${ARROW}${R} ${W}${ref.target}${R}`);
       }
 
-      // Show orphan nodes (no edges)
+      const tableNodes = result.nodes.filter((n) => n.type === 'table');
       const connected = new Set([
-        ...result.edges.map((e) => e.from),
-        ...result.edges.map((e) => e.to),
+        ...refs.map((e) => e.source.split('.')[0]),
+        ...refs.map((e) => e.target.split('.')[0]),
       ]);
-      const orphans = result.nodes.filter((n) => !connected.has(n.id));
+      const orphans = tableNodes.filter((n) => !connected.has(n.id));
       if (orphans.length > 0) {
         console.log('');
         console.log(`  ${DIM}Unconnected:${R}`);
