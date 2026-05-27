@@ -1,4 +1,5 @@
 import { request } from '../infrastructure/api.js';
+import { validateId } from '../domain/validation.js';
 import type { Server, ServerListResponse, App } from '../domain/types.js';
 
 export async function list(opts?: { search?: string; category?: string }): Promise<ServerListResponse> {
@@ -10,18 +11,23 @@ export async function list(opts?: { search?: string; category?: string }): Promi
 }
 
 export async function get(id: string): Promise<Server> {
-  return request<Server>(`/api/servers/${id}`);
+  validateId(id, 'server ID');
+  return request<Server>(`/api/servers/${encodeURIComponent(id)}`);
 }
 
 export async function install(appId: string, serverId: string): Promise<App> {
-  return request<App>(`/api/apps/${appId}/servers`, {
+  validateId(appId, 'app ID');
+  validateId(serverId, 'server ID');
+  return request<App>(`/api/apps/${encodeURIComponent(appId)}/servers`, {
     method: 'POST',
     body: { serverId },
   });
 }
 
 export async function uninstall(appId: string, serverId: string): Promise<App> {
-  return request<App>(`/api/apps/${appId}/servers/${serverId}`, {
+  validateId(appId, 'app ID');
+  validateId(serverId, 'server ID');
+  return request<App>(`/api/apps/${encodeURIComponent(appId)}/servers/${encodeURIComponent(serverId)}`, {
     method: 'DELETE',
   });
 }

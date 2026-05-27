@@ -1,4 +1,5 @@
 import { request } from '../infrastructure/api.js';
+import { validateId } from '../domain/validation.js';
 import type { Schema, SchemaDetail, SchemaListResponse, SchemaGraph } from '../domain/types.js';
 
 export async function upload(name: string, sql: string): Promise<Schema> {
@@ -13,9 +14,11 @@ export async function list(): Promise<SchemaListResponse> {
 }
 
 export async function get(id: string): Promise<SchemaDetail> {
-  return request<SchemaDetail>(`/api/schemas/${id}`);
+  validateId(id, 'schema ID');
+  return request<SchemaDetail>(`/api/schemas/${encodeURIComponent(id)}`);
 }
 
 export async function getGraph(id: string): Promise<SchemaGraph> {
-  return request<SchemaGraph>(`/api/schemas/${id}/graph`);
+  validateId(id, 'schema ID');
+  return request<SchemaGraph>(`/api/schemas/${encodeURIComponent(id)}/graph`);
 }

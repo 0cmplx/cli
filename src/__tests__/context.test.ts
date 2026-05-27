@@ -8,6 +8,7 @@ import {
   requireSchema,
   findProjectContext,
 } from '../infrastructure/context.js';
+import { CONFIG_DIR_NAME, CONTEXT_FILE } from '../domain/constants.js';
 
 describe('resolveContext', () => {
   it('returns flag source when --app is provided', () => {
@@ -75,9 +76,9 @@ describe('findProjectContext', () => {
   });
 
   it('finds context in current directory', () => {
-    const ctxDir = join(testDir, '.0cmplx');
+    const ctxDir = join(testDir, CONFIG_DIR_NAME);
     mkdirSync(ctxDir, { recursive: true });
-    writeFileSync(join(ctxDir, 'context.json'), JSON.stringify({ app: 'app_here' }));
+    writeFileSync(join(ctxDir, CONTEXT_FILE), JSON.stringify({ app: 'app_here' }));
 
     process.chdir(testDir);
     const result = findProjectContext();
@@ -85,9 +86,9 @@ describe('findProjectContext', () => {
   });
 
   it('walks up directories to find context', () => {
-    const ctxDir = join(testDir, '.0cmplx');
+    const ctxDir = join(testDir, CONFIG_DIR_NAME);
     mkdirSync(ctxDir, { recursive: true });
-    writeFileSync(join(ctxDir, 'context.json'), JSON.stringify({ app: 'app_parent' }));
+    writeFileSync(join(ctxDir, CONTEXT_FILE), JSON.stringify({ app: 'app_parent' }));
 
     process.chdir(nestedDir);
     const result = findProjectContext();

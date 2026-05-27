@@ -1,9 +1,11 @@
 import * as ToolService from '../../application/tools.js';
 import { resolveContext, requireApp } from '../../infrastructure/context.js';
-import { createSpinner } from '../ui/spinner.js';
 import { fail, W, R, DIM, GREEN } from '../ui/ansi.js';
 import { shortId } from '../ui/format.js';
+import { runCommand, requireArg } from './base.js';
+import { CLI_BIN } from '../../domain/constants.js';
 import type { Command } from '../../router.js';
+import type { LogEntry } from '../../domain/types.js';
 
 function parseParams(
   flags: Record<string, string | string[] | boolean>,
@@ -35,7 +37,7 @@ async function run(
   const toolName = args[1];
 
   if (!serverId || !toolName) {
-    fail('Usage: 0cmplx exec <server-id> <tool-name> [--param key=value ...]');
+    fail(`Usage: ${CLI_BIN} exec <server-id> <tool-name> [--param key=value ...]`);
     process.exit(2);
   }
 
@@ -43,42 +45,34 @@ async function run(
   const appId = requireApp(ctx);
   const params = parseParams(flags);
 
-  const spinner = createSpinner(`Executing ${toolName}`).start();
-
-  try {
-    const result = await ToolService.execute(appId, serverId, toolName, params);
-    spinner.succeed(`${toolName} completed in ${result.duration}ms`);
-
-    if (flags.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-
-    console.log('');
-    console.log(`  ${DIM}ID:${R}       ${shortId(result.id)}`);
-    console.log(`  ${DIM}Status:${R}   ${result.status === 'success' ? `${GREEN}${result.status}${R}` : result.status}`);
-    console.log(`  ${DIM}Duration:${R} ${result.duration}ms`);
-
-    if (result.response !== undefined) {
+  await runCommand<LogEntry>({
+    spinner: `Executing ${toolName}`,
+    action: () => ToolService.execute(appId, serverId, toolName, params),
+    onSuccess: (result) => {
       console.log('');
-      console.log(`  ${W}Response${R}`);
-      const output = typeof result.response === 'string'
-        ? result.response
-        : JSON.stringify(result.response, null, 2);
-      for (const line of output.split('\n')) {
-        console.log(`  ${line}`);
+      console.log(`  ${DIM}ID:${R}       ${shortId(result.id)}`);
+      console.log(`  ${DIM}Status:${R}   ${result.status === 'success' ? `${GREEN}${result.status}${R}` : result.status}`);
+      console.log(`  ${DIM}Duration:${R} ${result.duration}ms`);
+
+      if (result.response !== undefined) {
+        console.log('');
+        console.log(`  ${W}Response${R}`);
+        const output = typeof result.response === 'string'
+          ? result.response
+          : JSON.stringify(result.response, null, 2);
+        for (const line of output.split('\n')) {
+          console.log(`  ${line}`);
+        }
       }
-    }
-    console.log('');
-  } catch (err) {
-    spinner.fail(err instanceof Error ? err.message : 'Execution failed');
-    process.exit(1);
-  }
+      console.log('');
+    },
+    flags,
+  });
 }
 
 export const execCommand: Command = {
   name: 'exec',
   description: 'Execute a tool on a server',
-  usage: '0cmplx exec <server-id> <tool-name> [--param key=value ...]',
+  usage: `${CLI_BIN} exec <server-id> <tool-name> [--param key=value ...]`,
   run,
 };
