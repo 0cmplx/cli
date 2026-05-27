@@ -3,17 +3,24 @@
   "version": "0.1.0",
   "description": "0cmplx command-line interface",
   "type": "module",
-  "bin": { "0cmplx": "dist/bin.js" },
+  "bin": {
+    "0cmplx": "dist/bin.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
+    "@types/node": "^22.15.18",
     "typescript": "^5.8.3",
-    "@types/node": "^22.15.18"
+    "vitest": "^3.2.4"
   }
 }
