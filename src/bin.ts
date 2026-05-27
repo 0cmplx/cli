@@ -2,6 +2,7 @@
 
 import { startShell } from './shell.js';
 import { parseArgs, findCommand, getCommands, printUsage } from './router.js';
+import { CLI_BIN } from './domain/constants.js';
 
 const { positionals, flags } = parseArgs(process.argv.slice(2));
 
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
 
   if (!command) {
     console.error(`Unknown command: ${positionals[0]}`);
-    console.error('Run "0cmplx help" for usage.');
+    console.error(`Run "${CLI_BIN} help" for usage.`);
     process.exit(2);
   }
 

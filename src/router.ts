@@ -1,4 +1,5 @@
 import { DIM, W, BOLD, R, GREY, noColor } from './presentation/ui/ansi.js';
+import { CLI_BIN } from './domain/constants.js';
 
 export interface Command {
   name: string;
@@ -83,11 +84,11 @@ export function findCommand(
 
 export function printUsage(commands: Command[]): void {
   console.log('');
-  console.log(noColor ? '  0cmplx - command-line interface' : `  ${W}${BOLD}0cmplx${R} ${DIM}- command-line interface${R}`);
+  console.log(noColor ? `  ${CLI_BIN} - command-line interface` : `  ${W}${BOLD}${CLI_BIN}${R} ${DIM}- command-line interface${R}`);
   console.log('');
   console.log(noColor ? '  Usage:' : `  ${W}Usage:${R}`);
-  console.log('    0cmplx               Enter interactive shell');
-  console.log('    0cmplx <command>     Run a command');
+  console.log(`    ${CLI_BIN}               Enter interactive shell`);
+  console.log(`    ${CLI_BIN} <command>     Run a command`);
   console.log('');
   console.log(noColor ? '  Commands:' : `  ${W}Commands:${R}`);
 
@@ -123,8 +124,10 @@ export async function getCommands(): Promise<Command[]> {
   const { logsCommand } = await import('./presentation/commands/logs.js');
   const { contextCommands } = await import('./presentation/commands/context.js');
   const { helpCommand } = await import('./presentation/commands/help.js');
+  const { tryCommand } = await import('./presentation/commands/try.js');
 
   _commands = [
+    tryCommand,
     authCommands,
     schemaCommands,
     appCommands,

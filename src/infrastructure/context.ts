@@ -7,11 +7,11 @@ import {
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import type { ResolvedContext } from '../domain/types.js';
+import { CONFIG_DIR_NAME, CONTEXT_FILE, DIR_MODE } from '../domain/constants.js';
+import { ContextError, ERRORS } from '../domain/errors.js';
 
-const GLOBAL_DIR = join(homedir(), '.0cmplx');
-const GLOBAL_CONTEXT_FILE = join(GLOBAL_DIR, 'context.json');
-const PROJECT_DIR_NAME = '.0cmplx';
-const PROJECT_CONTEXT_FILE = 'context.json';
+const GLOBAL_DIR = join(homedir(), CONFIG_DIR_NAME);
+const GLOBAL_CONTEXT_FILE = join(GLOBAL_DIR, CONTEXT_FILE);
 
 export function resolveContext(
   flags: Record<string, string | string[] | boolean>,
@@ -53,18 +53,14 @@ export function resolveContext(
 
 export function requireApp(ctx: ResolvedContext): string {
   if (!ctx.app) {
-    throw new Error(
-      'No app selected. Use --app <id>, run "0cmplx context use --app <id>", or create a project context with "0cmplx context init".',
-    );
+    throw new ContextError(ERRORS.NO_APP_CONTEXT);
   }
   return ctx.app;
 }
 
 export function requireSchema(ctx: ResolvedContext): string {
   if (!ctx.schema) {
-    throw new Error(
-      'No schema selected. Use --schema <id>, run "0cmplx context use --schema <id>", or create a project context with "0cmplx context init".',
-    );
+    throw new ContextError(ERRORS.NO_SCHEMA_CONTEXT);
   }
   return ctx.schema;
 }
@@ -74,7 +70,7 @@ export function saveGlobalContext(
   value: string,
 ): void {
   if (!existsSync(GLOBAL_DIR)) {
-    mkdirSync(GLOBAL_DIR, { recursive: true, mode: 0o700 });
+    mkdirSync(GLOBAL_DIR, { recursive: true, mode: DIR_MODE });
   }
   const current = loadGlobalContext();
   current[key] = value;
@@ -94,14 +90,14 @@ export function loadGlobalContext(): {
 }
 
 export function initProjectContext(app?: string, schema?: string): void {
-  const dir = join(process.cwd(), PROJECT_DIR_NAME);
+  const dir = join(process.cwd(), CONFIG_DIR_NAME);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
   const data: Record<string, string> = {};
   if (app) data.app = app;
   if (schema) data.schema = schema;
-  writeFileSync(join(dir, PROJECT_CONTEXT_FILE), JSON.stringify(data, null, 2));
+  writeFileSync(join(dir, CONTEXT_FILE), JSON.stringify(data, null, 2));
 }
 
 export function findProjectContext(): {
@@ -111,7 +107,7 @@ export function findProjectContext(): {
   let dir = process.cwd();
 
   while (true) {
-    const candidate = join(dir, PROJECT_DIR_NAME, PROJECT_CONTEXT_FILE);
+    const candidate = join(dir, CONFIG_DIR_NAME, CONTEXT_FILE);
     if (existsSync(candidate)) {
       try {
         return JSON.parse(readFileSync(candidate, 'utf-8'));

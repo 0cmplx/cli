@@ -1,20 +1,17 @@
-import { request, getApiUrl } from '../infrastructure/api.js';
+import { verifyTokenRequest, logoutRequest } from '../infrastructure/api.js';
 import { saveCredentials, loadCredentials, clearCredentials } from '../infrastructure/credentials.js';
+import { AuthError, ERRORS } from '../domain/errors.js';
 import type { AuthVerification, Credentials } from '../domain/types.js';
 
 export async function verifyToken(token: string): Promise<AuthVerification> {
-  const API_URL = getApiUrl();
-  const res = await fetch(`${API_URL}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    throw new Error(res.status === 401 ? 'Invalid token' : `Server error: ${res.status}`);
+  try {
+    return await verifyTokenRequest(token);
+  } catch (err) {
+    if (err instanceof Error && err.message === ERRORS.INVALID_TOKEN) {
+      throw new AuthError(ERRORS.INVALID_TOKEN);
+    }
+    throw err;
   }
-
-  const data = await res.json();
-  if (!data.user) throw new Error('Invalid token');
-  return data;
 }
 
 export async function login(token: string): Promise<Credentials> {
@@ -36,14 +33,7 @@ export async function logout(): Promise<void> {
   const creds = loadCredentials();
   if (!creds) return;
 
-  const API_URL = getApiUrl();
-  try {
-    await fetch(`${API_URL}/api/auth/logout`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${creds.token}` },
-    });
-  } catch { /* best effort */ }
-
+  await logoutRequest(creds.token);
   clearCredentials();
 }
 

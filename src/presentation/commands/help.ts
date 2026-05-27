@@ -1,5 +1,6 @@
 import { getCommands, printUsage } from '../../router.js';
 import { W, BOLD, R, DIM, CYAN, ARROW } from '../ui/ansi.js';
+import { CLI_BIN } from '../../domain/constants.js';
 import type { Command } from '../../router.js';
 
 async function run(
@@ -41,6 +42,6 @@ async function run(
 export const helpCommand: Command = {
   name: 'help',
   description: 'Show help for commands',
-  usage: '0cmplx help [command]',
+  usage: `${CLI_BIN} help [command]`,
   run,
 };

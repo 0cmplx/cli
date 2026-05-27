@@ -1,11 +1,14 @@
 import * as LogService from '../../application/logs.js';
 import { getToken } from '../../infrastructure/credentials.js';
 import { resolveContext, requireApp } from '../../infrastructure/context.js';
-import { createSpinner } from '../ui/spinner.js';
 import { printTable } from '../ui/table.js';
 import { fail, W, R, DIM, GREEN, RED, YELLOW, GREY } from '../ui/ansi.js';
 import { relativeTime, shortId } from '../ui/format.js';
+import { runCommand, getFlag } from './base.js';
+import { CLI_BIN } from '../../domain/constants.js';
+import { ERRORS } from '../../domain/errors.js';
 import type { Command } from '../../router.js';
+import type { LogsResponse } from '../../domain/types.js';
 
 function statusColour(status: string): string {
   if (status === 'success') return `${GREEN}${status}${R}`;
@@ -19,43 +22,35 @@ async function list(
 ): Promise<void> {
   const ctx = resolveContext(flags);
   const appId = requireApp(ctx);
-  const type = typeof flags.type === 'string' ? flags.type : undefined;
+  const type = getFlag(flags, 'type');
 
-  const spinner = createSpinner('Fetching logs').start();
-
-  try {
-    const result = await LogService.list(appId, type);
-    spinner.succeed(`${result.logs.length} log(s)`);
-
-    if (flags.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-
-    console.log('');
-    printTable(
-      [
-        { key: 'id', label: 'ID' },
-        { key: 'type', label: 'Type' },
-        { key: 'tool', label: 'Tool' },
-        { key: 'status', label: 'Status' },
-        { key: 'duration', label: 'Duration', align: 'right' },
-        { key: 'when', label: 'When' },
-      ],
-      result.logs.map((l) => ({
-        id: shortId(l.id),
-        type: l.type,
-        tool: l.tool,
-        status: statusColour(l.status),
-        duration: `${l.duration}ms`,
-        when: relativeTime(l.createdAt),
-      })),
-    );
-    console.log('');
-  } catch (err) {
-    spinner.fail(err instanceof Error ? err.message : 'Failed to fetch logs');
-    process.exit(1);
-  }
+  await runCommand<LogsResponse>({
+    spinner: 'Fetching logs',
+    action: () => LogService.list(appId, type),
+    onSuccess: (result) => {
+      console.log('');
+      printTable(
+        [
+          { key: 'id', label: 'ID' },
+          { key: 'type', label: 'Type' },
+          { key: 'tool', label: 'Tool' },
+          { key: 'status', label: 'Status' },
+          { key: 'duration', label: 'Duration', align: 'right' },
+          { key: 'when', label: 'When' },
+        ],
+        result.logs.map((l) => ({
+          id: shortId(l.id),
+          type: l.type,
+          tool: l.tool,
+          status: statusColour(l.status),
+          duration: `${l.duration}ms`,
+          when: relativeTime(l.createdAt),
+        })),
+      );
+      console.log('');
+    },
+    flags,
+  });
 }
 
 async function follow(
@@ -66,11 +61,11 @@ async function follow(
   const appId = requireApp(ctx);
   const token = getToken();
   if (!token) {
-    fail("Not authenticated. Run '0cmplx auth' to log in.");
+    fail(ERRORS.NOT_AUTHENTICATED);
     process.exit(1);
   }
 
-  const type = typeof flags.type === 'string' ? flags.type : undefined;
+  const type = getFlag(flags, 'type');
   const url = LogService.streamUrl(appId, type);
 
   console.log(`  ${DIM}Streaming logs for ${shortId(appId)}... (Ctrl+C to stop)${R}`);
@@ -132,15 +127,12 @@ async function clear(
   const ctx = resolveContext(flags);
   const appId = requireApp(ctx);
 
-  const spinner = createSpinner('Clearing logs').start();
-
-  try {
-    await LogService.clear(appId);
-    spinner.succeed('Logs cleared');
-  } catch (err) {
-    spinner.fail(err instanceof Error ? err.message : 'Failed to clear logs');
-    process.exit(1);
-  }
+  await runCommand<void>({
+    spinner: 'Clearing logs',
+    action: () => LogService.clear(appId),
+    onSuccess: () => { /* spinner.succeed already shown */ },
+    flags,
+  });
 }
 
 async function run(
@@ -156,7 +148,7 @@ async function run(
 export const logsCommand: Command = {
   name: 'logs',
   description: 'View execution logs',
-  usage: '0cmplx logs [--follow] [--type <type>] [--app <id>]',
+  usage: `${CLI_BIN} logs [--follow] [--type <type>] [--app <id>]`,
   subcommands: [
     { name: 'clear', description: 'Clear all logs', run: clear },
   ],

@@ -3,6 +3,9 @@ import { getCredentialBackend } from '../../infrastructure/credentials.js';
 import { createSpinner } from '../ui/spinner.js';
 import { ok, fail, heading, W, R, DIM, GREEN } from '../ui/ansi.js';
 import { input } from '../ui/prompt.js';
+import { runCommand } from './base.js';
+import { CLI_BIN, TOKEN_PREFIX } from '../../domain/constants.js';
+import { ERRORS } from '../../domain/errors.js';
 import type { Command } from '../../router.js';
 
 const BACKEND_LABELS: Record<string, string> = {
@@ -15,7 +18,7 @@ async function login(): Promise<void> {
   const creds = AuthService.getStatus();
   if (creds) {
     console.log(`  Already authenticated as ${W}${creds.login}${R} ${DIM}(${creds.tier})${R}`);
-    console.log(`  Run ${W}0cmplx auth logout${R} first to switch accounts.`);
+    console.log(`  Run ${W}${CLI_BIN} auth logout${R} first to switch accounts.`);
     return;
   }
 
@@ -27,12 +30,12 @@ async function login(): Promise<void> {
   const token = await input('Token:', { hidden: true });
 
   if (!token) {
-    fail('No token provided.');
+    fail(ERRORS.NO_TOKEN_PROVIDED);
     process.exit(1);
   }
 
-  if (!token.startsWith('0cx_')) {
-    fail('Invalid token format. Tokens start with "0cx_".');
+  if (!token.startsWith(TOKEN_PREFIX)) {
+    fail(ERRORS.INVALID_TOKEN_FORMAT);
     process.exit(1);
   }
 
@@ -57,7 +60,7 @@ function status(
 ): void {
   const creds = AuthService.getStatus();
   if (!creds) {
-    console.log('  Not authenticated. Run "0cmplx auth" to log in.');
+    console.log(`  ${ERRORS.NOT_AUTHENTICATED}`);
     return;
   }
 
@@ -89,19 +92,18 @@ async function logout(): Promise<void> {
     return;
   }
 
-  const spinner = createSpinner('Signing out').start();
-
-  try {
-    await AuthService.logout();
-  } catch { /* best effort */ }
-
-  spinner.succeed('Credentials cleared.');
+  await runCommand<void>({
+    spinner: 'Signing out',
+    action: () => AuthService.logout(),
+    onSuccess: () => { /* spinner.succeed already shown */ },
+    flags: {},
+  });
 }
 
 export const authCommands: Command = {
   name: 'auth',
   description: 'Authenticate with an API token',
-  usage: '0cmplx auth [login|status|logout]',
+  usage: `${CLI_BIN} auth [login|status|logout]`,
   subcommands: [
     {
       name: 'login',

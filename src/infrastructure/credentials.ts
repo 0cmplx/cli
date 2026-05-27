@@ -1,14 +1,27 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir, platform } from 'os';
-import { execSync } from 'child_process';
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
+import { execFileSync, execSync } from 'child_process';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import type { Credentials } from '../domain/types.js';
+import {
+  CONFIG_DIR_NAME,
+  CREDENTIALS_FILE,
+  ENCRYPTED_CREDENTIALS_FILE,
+  KEY_FILE as KEY_FILE_NAME,
+  KEYCHAIN_SERVICE,
+  KEYCHAIN_ACCOUNT,
+  ENCRYPTION_ALGORITHM,
+  KEY_DERIVATION_SALT,
+  KEY_LENGTH,
+  IV_LENGTH,
+  DIR_MODE,
+  FILE_MODE,
+} from '../domain/constants.js';
 
-const SERVICE = '0cmplx';
-const ACCOUNT = 'cli-credentials';
-const CONFIG_DIR = join(homedir(), '.0cmplx');
-const FALLBACK_FILE = join(CONFIG_DIR, 'credentials.enc');
+const CONFIG_DIR = join(homedir(), CONFIG_DIR_NAME);
+const FALLBACK_FILE = join(CONFIG_DIR, ENCRYPTED_CREDENTIALS_FILE);
+const KEY_FILE = join(CONFIG_DIR, KEY_FILE_NAME);
 
 // ── Keychain backends ─────────────────────────────────────────────
 
@@ -22,33 +35,29 @@ function isLinux(): boolean {
 
 function hasSecretTool(): boolean {
   try {
-    execSync('which secret-tool', { stdio: 'pipe' });
+    execFileSync('which', ['secret-tool'], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
   }
 }
 
-// ── macOS Keychain ────────────────────────────────────────────────
+// ── macOS Keychain (no shell, no interpolation) ───────────────────
 
 function macSave(data: string): void {
-  // Delete existing entry first (ignore errors if not found)
   try {
-    execSync(`security delete-generic-password -s "${SERVICE}" -a "${ACCOUNT}"`, { stdio: 'pipe' });
+    execFileSync('security', ['delete-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT], { stdio: 'pipe' });
   } catch { /* not found, fine */ }
 
-  execSync(
-    `security add-generic-password -s "${SERVICE}" -a "${ACCOUNT}" -w "${data.replace(/"/g, '\\"')}"`,
-    { stdio: 'pipe' },
-  );
+  execFileSync('security', ['add-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT, '-w', data], { stdio: 'pipe' });
 }
 
 function macLoad(): string | null {
   try {
-    const result = execSync(
-      `security find-generic-password -s "${SERVICE}" -a "${ACCOUNT}" -w`,
-      { stdio: 'pipe', encoding: 'utf-8' },
-    );
+    const result = execFileSync('security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT, '-w'], {
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
     return result.trim();
   } catch {
     return null;
@@ -57,28 +66,28 @@ function macLoad(): string | null {
 
 function macClear(): boolean {
   try {
-    execSync(`security delete-generic-password -s "${SERVICE}" -a "${ACCOUNT}"`, { stdio: 'pipe' });
+    execFileSync('security', ['delete-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
   }
 }
 
-// ── Linux secret-tool (libsecret/GNOME Keyring) ──────────────────
+// ── Linux secret-tool (data via stdin, no shell interpolation) ────
 
 function linuxSave(data: string): void {
-  execSync(
-    `echo -n "${data.replace(/"/g, '\\"')}" | secret-tool store --label="${SERVICE}" service "${SERVICE}" account "${ACCOUNT}"`,
-    { stdio: 'pipe', shell: '/bin/sh' },
-  );
+  execSync(`secret-tool store --label="${KEYCHAIN_SERVICE}" service ${KEYCHAIN_SERVICE} account ${KEYCHAIN_ACCOUNT}`, {
+    input: data,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
 }
 
 function linuxLoad(): string | null {
   try {
-    const result = execSync(
-      `secret-tool lookup service "${SERVICE}" account "${ACCOUNT}"`,
-      { stdio: 'pipe', encoding: 'utf-8' },
-    );
+    const result = execFileSync('secret-tool', ['lookup', 'service', KEYCHAIN_SERVICE, 'account', KEYCHAIN_ACCOUNT], {
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
     return result.trim() || null;
   } catch {
     return null;
@@ -87,10 +96,7 @@ function linuxLoad(): string | null {
 
 function linuxClear(): boolean {
   try {
-    execSync(
-      `secret-tool clear service "${SERVICE}" account "${ACCOUNT}"`,
-      { stdio: 'pipe' },
-    );
+    execFileSync('secret-tool', ['clear', 'service', KEYCHAIN_SERVICE, 'account', KEYCHAIN_ACCOUNT], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -98,23 +104,32 @@ function linuxClear(): boolean {
 }
 
 // ── Encrypted file fallback ───────────────────────────────────────
-// Uses a machine-derived key (hostname + username hash) so the file
-// is not portable but also not plaintext. This is the last resort
-// when no OS keychain is available.
+// Uses a randomly generated key stored in a separate file with
+// restrictive permissions. The key is created on first use.
+
+function getOrCreateKey(): Buffer {
+  ensureDir();
+  if (existsSync(KEY_FILE)) {
+    return readFileSync(KEY_FILE);
+  }
+  const key = randomBytes(KEY_LENGTH);
+  writeFileSync(KEY_FILE, key, { mode: FILE_MODE });
+  return key;
+}
 
 function deriveKey(): Buffer {
-  const material = `${homedir()}:${process.env.USER || 'unknown'}:0cmplx-cli`;
-  return createHash('sha256').update(material).digest();
+  const masterKey = getOrCreateKey();
+  return scryptSync(KEY_DERIVATION_SALT, masterKey, KEY_LENGTH);
 }
 
 function encryptedSave(data: string): void {
   ensureDir();
   const key = deriveKey();
-  const iv = randomBytes(16);
-  const cipher = createCipheriv('aes-256-cbc', key, iv);
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
   const encrypted = Buffer.concat([cipher.update(data, 'utf-8'), cipher.final()]);
   const payload = Buffer.concat([iv, encrypted]);
-  writeFileSync(FALLBACK_FILE, payload, { mode: 0o600 });
+  writeFileSync(FALLBACK_FILE, payload, { mode: FILE_MODE });
 }
 
 function encryptedLoad(): string | null {
@@ -122,9 +137,9 @@ function encryptedLoad(): string | null {
   try {
     const payload = readFileSync(FALLBACK_FILE);
     const key = deriveKey();
-    const iv = payload.subarray(0, 16);
-    const encrypted = payload.subarray(16);
-    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+    const iv = payload.subarray(0, IV_LENGTH);
+    const encrypted = payload.subarray(IV_LENGTH);
+    const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
     return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf-8');
   } catch {
     return null;
@@ -132,16 +147,23 @@ function encryptedLoad(): string | null {
 }
 
 function encryptedClear(): boolean {
-  if (!existsSync(FALLBACK_FILE)) return false;
-  unlinkSync(FALLBACK_FILE);
-  return true;
+  let cleared = false;
+  if (existsSync(FALLBACK_FILE)) {
+    unlinkSync(FALLBACK_FILE);
+    cleared = true;
+  }
+  if (existsSync(KEY_FILE)) {
+    unlinkSync(KEY_FILE);
+    cleared = true;
+  }
+  return cleared;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
 
 function ensureDir(): void {
   if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+    mkdirSync(CONFIG_DIR, { recursive: true, mode: DIR_MODE });
   }
 }
 
@@ -166,7 +188,7 @@ export function saveCredentials(creds: Credentials): void {
   }
 
   // Clean up any legacy plaintext file
-  const legacyFile = join(CONFIG_DIR, 'credentials.json');
+  const legacyFile = join(CONFIG_DIR, CREDENTIALS_FILE);
   if (existsSync(legacyFile)) {
     unlinkSync(legacyFile);
   }
@@ -186,7 +208,7 @@ export function loadCredentials(): Credentials | null {
 
   // Try legacy plaintext file if keychain has nothing
   if (!data) {
-    const legacyFile = join(CONFIG_DIR, 'credentials.json');
+    const legacyFile = join(CONFIG_DIR, CREDENTIALS_FILE);
     if (existsSync(legacyFile)) {
       try {
         const creds = JSON.parse(readFileSync(legacyFile, 'utf-8')) as Credentials;
@@ -221,7 +243,7 @@ export function clearCredentials(): boolean {
   }
 
   // Also clean up any legacy file
-  const legacyFile = join(CONFIG_DIR, 'credentials.json');
+  const legacyFile = join(CONFIG_DIR, CREDENTIALS_FILE);
   if (existsSync(legacyFile)) {
     unlinkSync(legacyFile);
     cleared = true;
