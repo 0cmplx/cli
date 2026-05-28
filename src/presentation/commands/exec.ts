@@ -2,7 +2,7 @@ import * as ToolService from '../../application/tools.js';
 import { resolveContext, requireApp } from '../../infrastructure/context.js';
 import { fail, W, R, DIM, GREEN } from '../ui/ansi.js';
 import { shortId } from '../ui/format.js';
-import { runCommand, requireArg } from './base.js';
+import { runCommand } from './base.js';
 import { CLI_BIN } from '../../domain/constants.js';
 import type { Command } from '../../router.js';
 import type { LogEntry } from '../../domain/types.js';

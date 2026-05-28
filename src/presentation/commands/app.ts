@@ -17,9 +17,9 @@ async function create(
       console.log('');
       console.log(`  ${DIM}ID:${R}       ${W}${result.id}${R}`);
       console.log(`  ${DIM}Created:${R}  ${relativeTime(result.createdAt)}`);
-      console.log(`  ${DIM}Servers:${R}  ${result.servers.length}`);
+      console.log(`  ${DIM}Servers:${R}  ${result.installedServerIds.length}`);
       console.log('');
-      console.log(`  ${DIM}Set as active: ${CLI_BIN} context use --app ${shortId(result.id)}${R}`);
+      console.log(`  ${DIM}Set as active: ${CLI_BIN} use app ${result.id}${R}`);
       console.log('');
     },
     flags,
@@ -38,14 +38,9 @@ async function show(
     onSuccess: (result) => {
       console.log('');
       console.log(`  ${DIM}ID:${R}       ${W}${result.id}${R}`);
-      if (result.name) {
-        console.log(`  ${DIM}Name:${R}     ${result.name}`);
-      }
-      if (result.schemaId) {
-        console.log(`  ${DIM}Schema:${R}   ${result.schemaId}`);
-      }
       console.log(`  ${DIM}Created:${R}  ${relativeTime(result.createdAt)}`);
-      console.log(`  ${DIM}Servers:${R}  ${result.servers.length > 0 ? result.servers.join(', ') : 'none'}`);
+      console.log(`  ${DIM}Expires:${R}  ${relativeTime(result.expiresAt)}`);
+      console.log(`  ${DIM}Servers:${R}  ${result.installedServerIds.length > 0 ? result.installedServerIds.join(', ') : 'none'}`);
       console.log('');
     },
     flags,

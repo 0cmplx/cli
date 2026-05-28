@@ -10,8 +10,9 @@ export async function execute(
 ): Promise<LogEntry> {
   validateId(appId, 'app ID');
   validateId(serverId, 'server ID');
-  return request<LogEntry>(`/api/apps/${encodeURIComponent(appId)}/exec`, {
+  const res = await request<{ log: LogEntry }>(`/api/apps/${encodeURIComponent(appId)}/execute`, {
     method: 'POST',
-    body: { serverId, tool: toolName, params },
+    body: { serverId, toolName, params },
   });
+  return res.log;
 }
